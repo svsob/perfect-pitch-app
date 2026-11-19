@@ -1,10 +1,12 @@
 // Perfect Pitch Mini App: plays the session plan the bot put into the link and returns the answers.
-import { Audio } from './audio.js?v=4';
-import { COLORS, NOTE_IDS, buildPayload, decodePlan, parseTrain, testEntry, trainEntry } from './plan.js?v=4';
-import { makeT, noteName } from './i18n.js?v=4';
+import { Audio } from './audio.js?v=5';
+import { COLORS, NOTE_IDS, buildPayload, decodePlan, parseTrain, testEntry, trainEntry } from './plan.js?v=5';
+import { makeT, noteName } from './i18n.js?v=5';
 
 const tg = window.Telegram?.WebApp;
-const inTelegram = !!(tg && tg.initData);
+// Launched from the chat's reply-keyboard button Telegram may pass no initData, so also trust the platform.
+// Outside Telegram telegram-web-app.js reports platform 'unknown'.
+const inTelegram = !!(tg && (tg.initData || (tg.platform && tg.platform !== 'unknown')));
 const params = new URLSearchParams(location.search);
 const FAST = params.get('fast') === '1'; // local testing: 20-second practice
 const app = document.getElementById('app');
@@ -22,14 +24,19 @@ function makeStore() {
     del: (k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } return Promise.resolve(); },
   };
   if (!cloud) return ls;
+  // never wait more than 2 s for Telegram's cloud: a missing callback must not freeze the session
+  const wait = (fn, fallback) => new Promise((ok) => {
+    const timer = setTimeout(() => ok(fallback), 2000);
+    try { fn((v) => { clearTimeout(timer); ok(v); }); } catch { clearTimeout(timer); ok(fallback); }
+  });
   return {
-    get: (k) => new Promise((ok) => cloud.getItem(k, (err, v) => ok(err ? null : v || null))),
-    set: (k, v) => new Promise((ok) => cloud.setItem(k, v, () => ok())),
-    del: (k) => new Promise((ok) => cloud.removeItem(k, () => ok())),
+    get: (k) => wait((done) => cloud.getItem(k, (err, v) => done(err ? null : v || null)), null),
+    set: (k, v) => wait((done) => cloud.setItem(k, v, () => done()), undefined),
+    del: (k) => wait((done) => cloud.removeItem(k, () => done()), undefined),
   };
 }
 const keyState = () => `pp_${plan.sid}`;
-const keyDone = () => `ppdone_${plan.sid}`;
+const keyDone = () => `ppsent_${plan.sid}`; // set only after the results went to the bot
 const save = () => store.set(keyState(), JSON.stringify(state));
 
 // ---------- helpers ----------
@@ -381,10 +388,10 @@ function screenDone() {
     </main>`;
   const send = async () => {
     const payload = buildPayload(state, inTelegram ? `tg-${tg.platform}-${tg.version}` : 'browser');
-    await store.set(keyDone(), '1');
-    await store.del(keyState());
     window.__payload = payload;
     if (inTelegram) {
+      await store.set(keyDone(), '1');
+      await store.del(keyState());
       tg.sendData(payload); // closes the Mini App; the bot receives the data as a message
     } else {
       const dev = $('#dev');

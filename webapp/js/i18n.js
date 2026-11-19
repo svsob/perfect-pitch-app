@@ -29,7 +29,7 @@ const T = {
     done_send: 'Нажмите «Отправить результаты», чтобы сохранить занятие.',
     stop_confirm: 'Завершить занятие досрочно? То, что уже сделано, сохранится.',
     already: 'Это занятие уже выполнено и отправлено.', bad_link: 'Ссылка на занятие повреждена. Откройте занятие из чата с ботом: /today',
-    dev_sent: 'Режим проверки вне Telegram: данные, которые получил бы бот:',
+    dev_sent: 'Режим проверки вне Telegram: результаты НЕ отправлены. Если вы видите это в Telegram, сообщите организатору. Данные:',
     time_left: '{m}:{s}',
   },
   uk: {
@@ -58,7 +58,7 @@ const T = {
     done_send: 'Натисніть «Надіслати результати», щоб зберегти заняття.',
     stop_confirm: 'Завершити заняття достроково? Те, що вже зроблено, збережеться.',
     already: 'Це заняття вже виконано й надіслано.', bad_link: 'Посилання на заняття пошкоджене. Відкрийте заняття з чату з ботом: /today',
-    dev_sent: 'Режим перевірки поза Telegram: дані, які отримав би бот:',
+    dev_sent: 'Режим перевірки поза Telegram: результати НЕ надіслано. Якщо ви бачите це в Telegram, повідомте організатора. Дані:',
     time_left: '{m}:{s}',
   },
   en: {
@@ -87,7 +87,7 @@ const T = {
     done_send: 'Tap “Send results” to save the session.',
     stop_confirm: 'Finish the session early? What you have done will be saved.',
     already: 'This session has already been done and sent.', bad_link: 'The session link is broken. Open the session from the bot chat: /today',
-    dev_sent: 'Test mode outside Telegram: the data the bot would receive:',
+    dev_sent: 'Test mode outside Telegram: results were NOT sent. If you see this inside Telegram, tell the organiser. Data:',
     time_left: '{m}:{s}',
   },
   sk: {
@@ -116,7 +116,7 @@ const T = {
     done_send: 'Ťuknite na „Odoslať výsledky“, aby sa cvičenie uložilo.',
     stop_confirm: 'Ukončiť cvičenie predčasne? To, čo ste už urobili, sa uloží.',
     already: 'Toto cvičenie je už hotové a odoslané.', bad_link: 'Odkaz na cvičenie je poškodený. Otvorte cvičenie z chatu s botom: /today',
-    dev_sent: 'Testovací režim mimo Telegramu: údaje, ktoré by dostal bot:',
+    dev_sent: 'Testovací režim mimo Telegramu: výsledky sa NEODOSLALI. Ak to vidíte v Telegrame, dajte vedieť organizátorovi. Údaje:',
     time_left: '{m}:{s}',
   },
 };
