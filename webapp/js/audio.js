@@ -1,5 +1,5 @@
 // Piano samples (FluidR3, MIT) through Web Audio, plus the masking tone cloud used in tests.
-import { NOTE_IDS, SAMPLE_FILE } from './plan.js';
+import { NOTE_IDS, SAMPLE_FILE } from './plan.js?v=2';
 
 export class Audio {
   constructor(base = 'sounds/') {
@@ -9,22 +9,50 @@ export class Audio {
     this.master = null;
   }
 
-  /** Must be called from a user gesture (iOS). */
-  async unlock() {
+  /** Must be called from a user gesture (tap). Everything before the first await runs inside the gesture. */
+  unlock() {
+    // iOS 17+: treat this page as media playback, so the silent switch does not mute it.
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* old WebKit */ }
+    // Older iOS: a looping silent <audio> element switches the audio session to "playback" as well.
+    this.keepAlive();
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
       this.master.gain.value = 0.9;
       this.master.connect(this.ctx.destination);
+      // when the app comes back from the background, wake the sound up again
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) this.wake(); });
     }
-    if (this.ctx.state !== 'running') await this.ctx.resume();
-    // a silent blip keeps iOS happy
-    const b = this.ctx.createBuffer(1, 1, 22050);
+    const b = this.ctx.createBuffer(1, 1, 22050); // a silent blip, inside the gesture
     const s = this.ctx.createBufferSource();
     s.buffer = b;
     s.connect(this.ctx.destination);
     s.start(0);
+    return this.ctx.state === 'running' ? Promise.resolve() : this.ctx.resume();
+  }
+
+  /** Resume a suspended context (call from taps; cheap when already running). */
+  wake() {
+    if (this.el && this.el.paused) this.el.play().catch(() => {});
+    if (this.ctx && this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
+  }
+
+  keepAlive() {
+    if (!this.el) {
+      const el = document.createElement('audio');
+      el.setAttribute('playsinline', '');
+      el.setAttribute('x-webkit-airplay', 'deny');
+      el.loop = true;
+      el.preload = 'auto';
+      el.src = URL.createObjectURL(silentWav());
+      this.el = el;
+    }
+    this.el.play().catch(() => { /* not allowed yet: the next tap tries again */ });
+  }
+
+  get state() {
+    return this.ctx ? this.ctx.state : 'none';
   }
 
   async load(onProgress) {
@@ -42,6 +70,7 @@ export class Audio {
   /** Play a note; returns the performance.now() time of its onset. */
   playNote(note, delay = 0.05, dur = 1.3) {
     const ctx = this.ctx;
+    this.wake();
     const t0 = ctx.currentTime + delay;
     const src = ctx.createBufferSource();
     src.buffer = this.buffers[note];
@@ -77,4 +106,18 @@ export class Audio {
     }
     return len;
   }
+}
+
+/** 0.5 s of 8 kHz mono silence as a WAV file. */
+function silentWav() {
+  const n = 4000;
+  const buf = new ArrayBuffer(44 + n);
+  const v = new DataView(buf);
+  const str = (o, x) => { for (let i = 0; i < x.length; i++) v.setUint8(o + i, x.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVE'); str(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+  str(36, 'data'); v.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) v.setUint8(44 + i, 128); // 8-bit PCM silence
+  return new Blob([buf], { type: 'audio/wav' });
 }

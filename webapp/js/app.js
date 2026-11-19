@@ -1,7 +1,7 @@
 // Perfect Pitch Mini App: plays the session plan the bot put into the link and returns the answers.
-import { Audio } from './audio.js';
-import { COLORS, NOTE_IDS, buildPayload, decodePlan, parseTrain, testEntry, trainEntry } from './plan.js';
-import { makeT, noteName } from './i18n.js';
+import { Audio } from './audio.js?v=2';
+import { COLORS, NOTE_IDS, buildPayload, decodePlan, parseTrain, testEntry, trainEntry } from './plan.js?v=2';
+import { makeT, noteName } from './i18n.js?v=2';
 
 const tg = window.Telegram?.WebApp;
 const inTelegram = !!(tg && tg.initData);
@@ -9,6 +9,7 @@ const params = new URLSearchParams(location.search);
 const FAST = params.get('fast') === '1'; // local testing: 20-second practice
 const app = document.getElementById('app');
 const audio = new Audio('sounds/');
+window.__audio = audio; // for debugging in the browser console
 
 let plan, t, lang, trainTrials = [], state, store;
 
@@ -73,6 +74,7 @@ function setOrb(color, label = '', mark = '') {
 
 function enableKeys(on) {
   app.querySelectorAll('.key').forEach((k) => { k.disabled = !on; });
+  if (on) audio.wake();
 }
 
 // ---------- screens ----------
@@ -90,18 +92,37 @@ function screenWelcome() {
         <p class="lead">${esc(t('lead_' + plan.kind))}</p>
         ${showColors ? `<div class="dots">${dots}</div>` : '<div class="ornament">♪</div>'}
         <p class="hint">🔊 ${esc(t('sound_hint'))}</p>
+        <button class="ghost" id="soundcheck">🔊 ${esc(t('sound_check'))}</button>
+        <p class="hint" id="soundmsg" hidden></p>
       </div>
       <div class="bar" id="loadbar" hidden><i></i></div>
       <button class="btn-gold" id="start">${esc(t('start'))}</button>
     </main>`;
+  const loadSounds = async () => {
+    const p = audio.unlock(); // first, inside the tap
+    $('#loadbar').hidden = false;
+    await p;
+    if (Object.keys(audio.buffers).length < 7) {
+      await audio.load((f) => { $('#loadbar i').style.width = `${Math.round(f * 100)}%`; });
+    }
+  };
+  $('#soundcheck').onclick = async () => {
+    const msg = $('#soundmsg');
+    try {
+      await loadSounds();
+      audio.playNote('A', 0.05);
+      msg.textContent = audio.state === 'running' ? t('sound_check_hint') : t('sound_blocked');
+    } catch (e) {
+      msg.textContent = `✕ ${e.message}`;
+    }
+    msg.hidden = false;
+  };
   $('#start').onclick = async () => {
     const btn = $('#start');
     btn.disabled = true;
     btn.textContent = t('loading');
-    $('#loadbar').hidden = false;
     try {
-      await audio.unlock();
-      await audio.load((f) => { $('#loadbar i').style.width = `${Math.round(f * 100)}%`; });
+      await loadSounds();
     } catch (e) {
       screenError(`${t('loading')} ✕ ${e.message}`);
       return;
