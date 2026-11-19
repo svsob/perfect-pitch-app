@@ -1,0 +1,2 @@
+sounds/*.mp3: acoustic grand piano from the FluidR3 General MIDI soundfont (MIT licence),
+rendered to MP3 by the gleitz/midi-js-soundfonts project: https://github.com/gleitz/midi-js-soundfonts
