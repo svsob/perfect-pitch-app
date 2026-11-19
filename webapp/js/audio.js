@@ -1,5 +1,5 @@
 // Piano samples (FluidR3, MIT) through Web Audio, plus the masking tone cloud used in tests.
-import { NOTE_IDS, SAMPLE_FILE } from './plan.js?v=2';
+import { NOTE_IDS, SAMPLE_FILE } from './plan.js?v=4';
 
 export class Audio {
   constructor(base = 'sounds/') {

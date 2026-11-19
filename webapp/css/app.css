@@ -93,6 +93,7 @@ h1 {
   color: var(--gold-hi);
 }
 .lead { font-size: 16px; line-height: 1.5; margin: 0 0 6px; color: var(--ivory); }
+.hint.center { text-align: center; margin: 4px 0 0; }
 .hint { font-size: 13px; color: var(--muted); margin: 14px 0 0; line-height: 1.45; }
 .stat { font-size: 17px; margin: 6px 0; }
 .ornament { font-family: var(--serif); font-size: 34px; color: var(--gold); margin: 10px 0 0; opacity: 0.85; }

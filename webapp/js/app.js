@@ -1,7 +1,7 @@
 // Perfect Pitch Mini App: plays the session plan the bot put into the link and returns the answers.
-import { Audio } from './audio.js?v=2';
-import { COLORS, NOTE_IDS, buildPayload, decodePlan, parseTrain, testEntry, trainEntry } from './plan.js?v=2';
-import { makeT, noteName } from './i18n.js?v=2';
+import { Audio } from './audio.js?v=4';
+import { COLORS, NOTE_IDS, buildPayload, decodePlan, parseTrain, testEntry, trainEntry } from './plan.js?v=4';
+import { makeT, noteName } from './i18n.js?v=4';
 
 const tg = window.Telegram?.WebApp;
 const inTelegram = !!(tg && tg.initData);
@@ -128,44 +128,82 @@ function screenWelcome() {
       return;
     }
     if (!state.st) state.st = Date.now();
-    if (state.phase === 'welcome') state.phase = plan.intro ? 'intro' : plan.train ? 'train' : 'testintro';
+    if (state.phase === 'welcome') state.phase = 'intro';
     await save();
     route();
   };
 }
 
+/** Meet the notes: the app plays them one by one (key + colour + name), then the person taps freely. */
 function screenIntro() {
+  const testOnly = !plan.train; // baseline / final: all seven notes, then straight to the test
+  const notes = testOnly ? NOTE_IDS : plan.notes;
   const heard = new Set();
+  let demo = 0; // bumps to cancel a running demo
   app.innerHTML = `${header(t('intro_title'))}
     <main class="stage">
-      <p class="prompt">${esc(t('intro_text'))}</p>
-      <div class="orb" id="orb"><span class="label"></span><span class="mark"></span></div>
+      <p class="prompt" id="prompt">${esc(t('intro_watch'))}</p>
+      <div class="orb" id="orb"><span class="label"></span><span class="mark">♪</span></div>
+      <div class="under"><button class="ghost" id="again">▶ ${esc(t('intro_again'))}</button></div>
+      <p class="hint center" id="after" hidden>${esc(t(testOnly ? 'intro_then_test' : 'intro_then_train'))}</p>
       <div class="spacer"></div>
-      ${keysHtml(plan.notes)}
+      ${keysHtml(testOnly ? [] : plan.notes)}
       <button class="btn-gold" id="next" disabled>${esc(t('next'))}</button>
     </main>`;
-  enableKeys(true);
+  const keyEl = (n) => app.querySelector(`.key[data-n="${n}"]`);
+  const show = (n) => {
+    setOrb(COLORS[n], noteName(lang, n));
+    const k = keyEl(n);
+    k.classList.remove('pulse'); void k.offsetWidth; k.classList.add('pulse');
+  };
+  const ready = () => {
+    if (notes.every((x) => heard.has(x))) {
+      $('#next').disabled = false;
+      $('#after').hidden = false;
+    }
+  };
+  const play = async () => {
+    const my = ++demo;
+    enableKeys(false);
+    $('#again').disabled = true;
+    $('#prompt').textContent = t('intro_watch');
+    for (const n of notes) {
+      if (my !== demo || state.phase !== 'intro') return;
+      audio.playNote(n, 0.02, 1.0);
+      show(n);
+      heard.add(n);
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+    if (my !== demo) return;
+    setOrb('', '', '♪');
+    enableKeys(true);
+    $('#again').disabled = false;
+    $('#prompt').textContent = t('intro_text');
+    ready();
+  };
   app.querySelectorAll('.key').forEach((k) => {
     k.onclick = () => {
       const n = k.dataset.n;
       audio.playNote(n, 0.01);
       haptic();
-      setOrb(COLORS[n], noteName(lang, n));
-      k.classList.remove('pulse'); void k.offsetWidth; k.classList.add('pulse');
+      show(n);
       heard.add(n);
-      if (plan.notes.every((x) => heard.has(x))) $('#next').disabled = false;
+      ready();
     };
   });
+  $('#again').onclick = play;
   $('#next').onclick = async () => {
-    state.phase = 'train';
+    demo += 1;
+    state.phase = plan.train ? 'train' : 'testintro';
     await save();
     route();
   };
+  play();
 }
 
 // ---------- practice ----------
 let ticker = null;
-function trainSeconds() { return FAST ? 20 : plan.train.secs; }
+function trainSeconds() { return FAST ? 20 : (plan.train ? plan.train.secs : 0); }
 
 function screenTrain() {
   app.innerHTML = `${header()}
@@ -370,6 +408,9 @@ function route() {
       else tg.disableClosingConfirmation();
     } catch { /* old client */ }
   }
+  // progress saved by an older version of the app may point to a step this session does not have
+  if (state.phase === 'train' && !plan.train) state.phase = 'testintro';
+  if (!['welcome', 'intro', 'train', 'testintro', 'test', 'done'].includes(state.phase)) state.phase = 'welcome';
   const audioReady = audio.ctx && Object.keys(audio.buffers).length === 7;
   if (!audioReady && state.phase !== 'done') return screenWelcome();
   ({ welcome: screenWelcome, intro: screenIntro, train: screenTrain, testintro: screenTestIntro, test: screenTest,
