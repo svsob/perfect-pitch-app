@@ -222,3 +222,13 @@ pre#dev {
   .key { max-height: 84px; font-size: 20px; }
   h1 { font-size: 28px; }
 }
+
+/* ---------- test: neutral keys (no colours), answer countdown ---------- */
+.keys.neutral .key {
+  color: #14213d;
+  background: linear-gradient(180deg, #fffaf0 0%, var(--ivory) 60%, #d9cfba 100%);
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(216, 180, 90, 0.5), 0 8px 18px rgba(0, 0, 0, 0.35);
+}
+.countdown { width: 60%; height: 6px; border-radius: 6px; background: rgba(154, 165, 196, 0.18); overflow: hidden; }
+.countdown i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--gold-lo), var(--gold-hi)); transition: width 0.1s linear; }
+.hint.small { margin: 0; font-size: 12px; text-align: right; }
