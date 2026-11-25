@@ -1,8 +1,8 @@
 // Perfect Pitch Mini App (Projektový dizajn): daily training with all seven notes, then a 28-task test.
 // The bot puts the plan into the link; the app plays it and returns the data with Telegram.WebApp.sendData.
-import { Audio } from './audio.js?v=6';
-import { COLORS, NOTE_IDS, buildPayload, decodePlan, packState, testEntry } from './plan.js?v=6';
-import { makeT, noteName } from './i18n.js?v=6';
+import { Audio } from './audio.js?v=7';
+import { COLORS, NOTE_IDS, buildPayload, decodePlan, packState, testEntry } from './plan.js?v=7';
+import { makeT, noteName } from './i18n.js?v=7';
 
 const tg = window.Telegram?.WebApp;
 // Launched from the chat's reply-keyboard button Telegram may pass no initData, so also trust the platform.
@@ -191,15 +191,17 @@ function screenWelcome() {
 
 function screenTrain() {
   const main = plan.kind === 'main';
+  const seq = (plan.train && plan.train.seq) || 'ABCDEFG';
   app.innerHTML = `${header(t(main ? 'train_title' : 'title_extra'))}
     <main class="stage">
       <div class="row"><div class="timer" id="timer"></div><div class="hint small" id="minhint"></div></div>
       ${main ? '<div class="bar"><i id="tbar"></i></div>' : ''}
-      <p class="prompt" id="prompt">${esc(t(state.demoDone ? 'train_hint' : 'demo'))}</p>
+      <p class="prompt" id="prompt">${esc(t(state.demoDone ? 'train_ask' : 'demo'))}</p>
       <div class="orb" id="orb"><span class="label"></span><span class="mark">♪</span></div>
-      <div class="under"><button class="ghost" id="demo">▶ ${esc(t('demo_again'))}</button></div>
+      <div class="under"><button class="ghost" id="replay">↻ ${esc(t('replay'))}</button><div class="score" id="score"></div></div>
       <div class="spacer"></div>
       ${keysHtml(false)}
+      <div class="row2"><button class="link" id="demo">▶ ${esc(t('demo_again'))}</button></div>
       <button class="btn-gold" id="go" ${main ? 'disabled' : ''}>${esc(t(main ? 'start_test' : 'finish_extra'))}</button>
     </main>`;
   openSeg();
@@ -208,43 +210,83 @@ function screenTrain() {
   renderTimer();
 
   const keyEl = (n) => app.querySelector(`.key[data-n="${n}"]`);
-  const show = (n) => {
-    setOrb(colors[n], noteName(lang, n));
-    const k = keyEl(n);
-    k.classList.remove('pulse'); void k.offsetWidth; k.classList.add('pulse');
+  const count = (n) => { if (state.seg >= 0) state.segs[state.seg].c[NOTE_IDS.indexOf(n)] += 1; };
+  const play = (n, dur = plan.stim_s) => { audio.stopAll(0.03); count(n); return audio.playNote(n, 0.05, dur); };
+  const showScore = () => {
+    const ok = state.tr.filter((e) => e[0] === e[1]).length;
+    $('#score').textContent = state.tr.length ? `✓ ${ok} / ${state.tr.length}` : '';
   };
-  const listen = (n) => {
-    audio.stopAll(0.03);
-    audio.playNote(n, 0.02, plan.stim_s);
-    show(n);
-    if (state.seg >= 0) state.segs[state.seg].c[NOTE_IDS.indexOf(n)] += 1;
+  let run = 0; // bumps to stop a running demo / guess loop
+  let current = null;
+
+  const nextGuess = () => {
+    const my = run;
+    if (state.phase !== 'train') return;
+    app.querySelectorAll('.key').forEach((k) => k.classList.remove('correct', 'wrong'));
+    const note = seq[state.tr.length % seq.length];
+    setOrb('', '', '?');
+    $('#prompt').textContent = t('train_ask');
+    enableKeys(false);
+    const onset = play(note);
+    current = { note, onset, answered: false };
+    setTimeout(() => { if (my === run && current && !current.answered) enableKeys(true); }, Math.max(0, onset - performance.now()));
+    showScore();
   };
-  let demo = 0;
+  const answer = (resp) => {
+    if (!current || current.answered) return;
+    current.answered = true;
+    const { note, onset } = current;
+    const right = resp === note;
+    enableKeys(false);
+    audio.stopAll(0.05);
+    state.tr.push(`${note}${resp}${Math.max(0, Math.round(performance.now() - onset)).toString(36)}`);
+    keyEl(note).classList.add('correct');
+    setOrb(colors[note], noteName(lang, note), right ? '✓' : '');
+    if (right) {
+      haptic();
+      $('#prompt').textContent = t('right');
+    } else {
+      keyEl(resp).classList.add('wrong');
+      $('#prompt').textContent = t('wrong', { n: noteName(lang, note) });
+      setTimeout(() => play(note, 1.6), 250); // the correct note once more
+    }
+    showScore();
+    save();
+    const my = run;
+    setTimeout(() => { if (my === run) nextGuess(); }, right ? 1300 : 2600);
+  };
   const playDemo = async () => {
-    const my = ++demo;
+    const my = ++run;
+    current = null;
     enableKeys(false);
     $('#demo').disabled = true;
+    $('#replay').disabled = true;
     $('#prompt').textContent = t('demo');
     for (const n of NOTE_IDS) {
-      if (my !== demo || state.phase !== 'train') return;
-      listen(n);
+      if (my !== run || state.phase !== 'train') return;
+      play(n, 1.4);
+      setOrb(colors[n], noteName(lang, n));
+      const k = keyEl(n);
+      k.classList.remove('pulse'); void k.offsetWidth; k.classList.add('pulse');
       await new Promise((r) => setTimeout(r, 1500));
     }
-    if (my !== demo) return;
-    setOrb('', '', '♪');
-    enableKeys(true);
-    $('#demo').disabled = false;
-    $('#prompt').textContent = t('train_hint');
+    if (my !== run) return;
     state.demoDone = true;
     save();
+    $('#demo').disabled = false;
+    $('#replay').disabled = false;
+    nextGuess();
   };
-  app.querySelectorAll('.key').forEach((k) => {
-    k.onclick = () => { haptic(); listen(k.dataset.n); };
-  });
+  app.querySelectorAll('.key').forEach((k) => { k.onclick = () => answer(k.dataset.n); });
+  $('#replay').onclick = () => {
+    if (!current || current.answered) return;
+    current.onset = play(current.note); // reaction time counts from the last hearing
+  };
   $('#demo').onclick = playDemo;
   $('#go').onclick = async () => {
     if (main && state.trainMs < minTrainMs()) return;
-    demo += 1;
+    run += 1;
+    current = null;
     audio.stopAll();
     clearInterval(ticker);
     tick();
@@ -254,7 +296,7 @@ function screenTrain() {
     await save();
     route();
   };
-  if (!state.demoDone && main) playDemo(); else { state.demoDone = true; enableKeys(true); $('#prompt').textContent = t('train_hint'); }
+  if (!state.demoDone && main) playDemo(); else { state.demoDone = true; nextGuess(); }
 }
 
 function screenTestIntro() {
@@ -368,7 +410,7 @@ async function screenDone() {
       if (sid === plan.sid) continue;
       try {
         const old = JSON.parse((await store.get(keyState(sid))) || 'null');
-        if (old && !(await store.get(keySent(sid))) && (old.segs?.length || old.te?.length)) prev.push(packState(old));
+        if (old && !(await store.get(keySent(sid))) && (old.segs?.length || old.te?.length || old.tr?.length)) prev.push(packState(old));
       } catch { /* skip broken */ }
     }
     const ua = inTelegram ? `tg-${tg.platform}-${tg.version}` : 'browser';
@@ -434,7 +476,7 @@ async function boot() {
     screenMessage(t('already'));
     return;
   }
-  state = { sid: plan.sid, phase: 'welcome', trainMs: 0, segs: [], seg: -1, demoDone: false, te: [], cur: -1, st: 0, ft: 0, done: false };
+  state = { sid: plan.sid, phase: 'welcome', trainMs: 0, segs: [], seg: -1, demoDone: false, tr: [], te: [], cur: -1, st: 0, ft: 0, done: false };
   const saved = await store.get(keyState(plan.sid));
   if (saved) {
     try { Object.assign(state, JSON.parse(saved)); } catch { /* ignore corrupt */ }

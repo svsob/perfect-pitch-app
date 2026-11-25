@@ -53,7 +53,7 @@ export function testEntry(target, resp, rt) {
 }
 
 export function packState(st) {
-  return { sid: st.sid, segs: st.segs.map(segEntry).join(';'), te: st.te.join('.'), done: !!st.done };
+  return { sid: st.sid, segs: st.segs.map(segEntry).join(';'), tr: (st.tr || []).join('.'), te: st.te.join('.'), done: !!st.done };
 }
 
 /** Payload for Telegram.WebApp.sendData (max 4096 bytes). Older unsent sessions go along in `prev`. */
@@ -64,6 +64,12 @@ export function buildPayload(st, kind, snd, ua, prev = []) {
   while (new TextEncoder().encode(s).length > 4000 && extra.length) {
     extra.shift();
     s = make();
+  }
+  // a very long extra training: keep the newest guesses (the bot also gets the counts per note)
+  const st2 = { ...st, tr: [...(st.tr || [])] };
+  while (new TextEncoder().encode(s).length > 4000 && st2.tr.length) {
+    st2.tr.splice(0, 20);
+    s = JSON.stringify({ v: 2, ...packState(st2), kind, snd, ua, prev: extra, tr_cut: (st.tr || []).length - st2.tr.length });
   }
   return s;
 }

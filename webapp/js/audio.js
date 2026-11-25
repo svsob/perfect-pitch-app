@@ -1,5 +1,5 @@
 // Piano samples (FluidR3, MIT) through Web Audio, and the pitchless noise played before each test note.
-import { NOTE_IDS, SAMPLE_FILE } from './plan.js?v=6';
+import { NOTE_IDS, SAMPLE_FILE } from './plan.js?v=7';
 
 export class Audio {
   constructor(base = 'sounds/') {
@@ -75,6 +75,16 @@ export class Audio {
       onProgress?.(done / NOTE_IDS.length);
     }));
     if (!this.noise) this.noise = makeNoise(this.ctx, 2.5);
+    // noise at about the loudness of the notes (it used to be much louder): RMS of the first 1.5 s of each sample
+    const rms = NOTE_IDS.map((n) => {
+      const d = this.buffers[n].getChannelData(0);
+      const len = Math.min(d.length, Math.floor(this.buffers[n].sampleRate * 1.5));
+      let sum = 0;
+      for (let i = 0; i < len; i++) sum += d[i] * d[i];
+      return Math.sqrt(sum / len);
+    });
+    const noteRms = rms.reduce((a, b) => a + b, 0) / rms.length;
+    this.noiseGain = Math.min(0.06, Math.max(0.003, (0.6 * noteRms) / 0.33)); // 0.33 = RMS of the filtered noise
     if (!this.hash && Object.keys(raw).length === NOTE_IDS.length) {
       try {
         const parts = NOTE_IDS.map((n) => new Uint8Array(raw[n]));
@@ -136,11 +146,15 @@ export class Audio {
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
     const g = ctx.createGain();
+    const level = this.noiseGain || 0.02;
     g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(0.18, t0 + 0.02);
-    g.gain.setValueAtTime(0.18, t0 + len - 0.03);
+    g.gain.linearRampToValueAtTime(level, t0 + 0.05);
+    g.gain.setValueAtTime(level, t0 + len - 0.05);
     g.gain.linearRampToValueAtTime(0, t0 + len);
-    src.connect(g).connect(this.master);
+    const lp = ctx.createBiquadFilter(); // softer, less hissy: no definite pitch, energy mostly below 3 kHz
+    lp.type = 'lowpass';
+    lp.frequency.value = 3000;
+    src.connect(lp).connect(g).connect(this.master);
     src.start(t0, Math.random() * 0.4);
     src.stop(t0 + len + 0.01);
     this._track(src, g);

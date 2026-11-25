@@ -232,3 +232,4 @@ pre#dev {
 .countdown { width: 60%; height: 6px; border-radius: 6px; background: rgba(154, 165, 196, 0.18); overflow: hidden; }
 .countdown i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--gold-lo), var(--gold-hi)); transition: width 0.1s linear; }
 .hint.small { margin: 0; font-size: 12px; text-align: right; }
+.row2 { text-align: center; margin: -4px 0 6px; }
