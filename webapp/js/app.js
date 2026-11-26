@@ -1,8 +1,8 @@
 // Perfect Pitch Mini App (Projektový dizajn): daily training with all seven notes, then a 28-task test.
 // The bot puts the plan into the link; the app plays it and returns the data with Telegram.WebApp.sendData.
-import { Audio } from './audio.js?v=7';
-import { COLORS, NOTE_IDS, buildPayload, decodePlan, packState, testEntry } from './plan.js?v=7';
-import { makeT, noteName } from './i18n.js?v=7';
+import { Audio } from './audio.js?v=8';
+import { COLORS, NOTE_IDS, buildPayload, decodePlan, packState, testEntry } from './plan.js?v=8';
+import { makeT, noteName } from './i18n.js?v=8';
 
 const tg = window.Telegram?.WebApp;
 // Launched from the chat's reply-keyboard button Telegram may pass no initData, so also trust the platform.
@@ -212,8 +212,11 @@ function screenTrain() {
   const keyEl = (n) => app.querySelector(`.key[data-n="${n}"]`);
   const count = (n) => { if (state.seg >= 0) state.segs[state.seg].c[NOTE_IDS.indexOf(n)] += 1; };
   const play = (n, dur = plan.stim_s) => { audio.stopAll(0.03); count(n); return audio.playNote(n, 0.05, dur); };
+  const plain = (e) => (e[0] === 'r' ? e.slice(1) : e);
+  state.rq = state.rq || [];   // notes answered wrong: they come back 2-3 tasks later
+  state.tp = state.tp || 0;    // position in the plan's training order
   const showScore = () => {
-    const ok = state.tr.filter((e) => e[0] === e[1]).length;
+    const ok = state.tr.filter((e) => plain(e)[0] === plain(e)[1]).length;
     $('#score').textContent = state.tr.length ? `✓ ${ok} / ${state.tr.length}` : '';
   };
   let run = 0; // bumps to stop a running demo / guess loop
@@ -223,37 +226,53 @@ function screenTrain() {
     const my = run;
     if (state.phase !== 'train') return;
     app.querySelectorAll('.key').forEach((k) => k.classList.remove('correct', 'wrong'));
-    const note = seq[state.tr.length % seq.length];
+    let note;
+    let repeat = false;
+    const due = state.rq.findIndex((q) => q.due <= state.tr.length);
+    if (due >= 0) {
+      note = state.rq.splice(due, 1)[0].n;
+      repeat = true;
+    } else {
+      note = seq[state.tp % seq.length];
+      state.tp += 1;
+    }
     setOrb('', '', '?');
-    $('#prompt').textContent = t('train_ask');
+    $('#prompt').textContent = t(repeat ? 'train_repeat' : 'train_ask');
     enableKeys(false);
     const onset = play(note);
-    current = { note, onset, answered: false };
+    current = { note, onset, answered: false, repeat };
     setTimeout(() => { if (my === run && current && !current.answered) enableKeys(true); }, Math.max(0, onset - performance.now()));
     showScore();
   };
   const answer = (resp) => {
     if (!current || current.answered) return;
     current.answered = true;
-    const { note, onset } = current;
+    const { note, onset, repeat } = current;
     const right = resp === note;
     enableKeys(false);
     audio.stopAll(0.05);
-    state.tr.push(`${note}${resp}${Math.max(0, Math.round(performance.now() - onset)).toString(36)}`);
+    state.tr.push(`${repeat ? 'r' : ''}${note}${resp}${Math.max(0, Math.round(performance.now() - onset)).toString(36)}`);
     keyEl(note).classList.add('correct');
-    setOrb(colors[note], noteName(lang, note), right ? '✓' : '');
+    const my = run;
     if (right) {
       haptic();
+      setOrb(colors[note], noteName(lang, note), '✓');
       $('#prompt').textContent = t('right');
     } else {
+      // compare: first the note that was chosen, then the correct one; the mistake comes back soon
       keyEl(resp).classList.add('wrong');
-      $('#prompt').textContent = t('wrong', { n: noteName(lang, note) });
-      setTimeout(() => play(note, 1.6), 250); // the correct note once more
+      $('#prompt').textContent = t('wrong2', { c: noteName(lang, resp), n: noteName(lang, note) });
+      setOrb(colors[resp], noteName(lang, resp), '');
+      setTimeout(() => { if (my === run) play(resp, 1.0); }, 200);
+      setTimeout(() => { if (my === run) { setOrb(colors[note], noteName(lang, note), ''); play(note, 1.6); } }, 1400);
+      // at most one pending repeat per note and 3 in total, so repeats never crowd out the rest
+      if (!state.rq.some((q) => q.n === note) && state.rq.length < 3) {
+        state.rq.push({ n: note, due: state.tr.length + 2 + Math.floor(Math.random() * 2) });
+      }
     }
     showScore();
     save();
-    const my = run;
-    setTimeout(() => { if (my === run) nextGuess(); }, right ? 1300 : 2600);
+    setTimeout(() => { if (my === run) nextGuess(); }, right ? 1300 : 3600);
   };
   const playDemo = async () => {
     const my = ++run;

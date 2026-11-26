@@ -67,9 +67,12 @@ export function buildPayload(st, kind, snd, ua, prev = []) {
   }
   // a very long extra training: keep the newest guesses (the bot also gets the counts per note)
   const st2 = { ...st, tr: [...(st.tr || [])] };
+  let pos = 0; // place in the plan's training order of the first guess that is kept
   while (new TextEncoder().encode(s).length > 4000 && st2.tr.length) {
-    st2.tr.splice(0, 20);
-    s = JSON.stringify({ v: 2, ...packState(st2), kind, snd, ua, prev: extra, tr_cut: (st.tr || []).length - st2.tr.length });
+    const cut = st2.tr.splice(0, 20);
+    pos += cut.filter((e) => e[0] !== 'r').length;
+    s = JSON.stringify({ v: 2, ...packState(st2), kind, snd, ua, prev: extra,
+      tr_cut: (st.tr || []).length - st2.tr.length, tr_pos: pos });
   }
   return s;
 }
